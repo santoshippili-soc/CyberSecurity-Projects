@@ -20,7 +20,7 @@ This lab demonstrates:
 | Step | Description |
 |---|---|
 | 1 | pfSense console — interface assignment (WAN: 192.168.1.6, LAN: 192.168.10.1) and `pfctl -d` to disable firewall for initial GUI access |
-| 2 | pfSense WebGUI login page accessed from Kali over WAN (https://192.168.1.14) |
+| 2 | pfSense WebGUI login page accessed from Kali over WAN (https://192.168.1.6) |
 | 3 | Ubuntu victim VM — IP `192.168.10.100` assigned via pfSense DHCP, internet connectivity verified with `ping 8.8.8.8` and `ping google.com` |
 | 4 | pfSense WAN firewall rules — block rule (top, red ✗) and allow rule for Kali→Ubuntu in place |
 | 5 | Kali Linux launching SYN flood using `hping3 --flood -S -p 80 192.168.10.100` |
