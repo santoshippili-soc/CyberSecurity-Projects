@@ -1,0 +1,125 @@
+# Lab Screenshots — Step-by-Step Walkthrough
+
+Visual evidence of each phase of the pfSense DoS Defense lab, in order of execution.
+
+---
+
+## Step 1 — pfSense Console: Interface Assignment & Firewall Disable
+
+![pfSense Console](screenshots/08-pfsense-console-pfctl.png)
+
+**What this shows:**
+- pfSense 2.8.1-RELEASE running in VirtualBox
+- Interface assignment confirmed: `WAN (wan) → em0 → v4/DHCP4: 192.168.1.6/24`
+- Interface assignment confirmed: `LAN (lan) → em1 → v4: 192.168.10.1/24`
+- Shell option `8` selected to enter the pfSense shell
+- Command `pfctl -d` executed to temporarily disable the pfSense packet filter
+- Output `pf disabled` confirms the firewall was disabled to allow initial WebGUI access from the WAN side
+
+---
+
+## Step 2 — pfSense WebGUI Login
+
+![pfSense Login](screenshots/01-pfsense-login.png)
+
+**What this shows:**
+- pfSense WebGUI successfully accessible from the Kali machine (WAN side) at `https://192.168.1.14`
+- Login page confirms the web interface is reachable over the WAN
+- Default credentials (`admin` / `pfsense`) used for initial access
+- Self-signed certificate warning (`Not secure`) is expected in a home lab environment
+
+> **Note:** The WAN IP shown here is `192.168.1.14` — this was the DHCP-assigned IP at the time of this screenshot. The static topology uses `192.168.1.6`.
+
+---
+
+## Step 3 — Ubuntu Victim: IP Verification & Internet Connectivity
+
+![Ubuntu IP + Internet](screenshots/02-ubuntu-ip-internet.png)
+
+**What this shows:**
+- Ubuntu VM interface `enp0s3` with IP `192.168.10.100/24` — successfully leased from pfSense DHCP
+- Successful `ping 8.8.8.8` — 3 packets sent, 0% loss, ~45ms RTT, confirming routing through pfSense to the internet
+- Successful `ping google.com` — DNS resolution working (resolved to `216.58.196.110`) via pfSense DNS relay
+- This confirms the full network stack: Ubuntu → pfSense LAN → pfSense WAN → Internet
+
+---
+
+## Step 4 — pfSense WAN Firewall Rules (Pre-Attack State)
+
+![pfSense WAN Rules](screenshots/03-pfsense-wan-rules.png)
+
+**What this shows:**
+- Firewall → Rules → WAN tab in pfSense WebGUI
+- Three rules visible:
+  1. **Row 1 (Red ✗, Block):** IPv4 TCP — Source `192.168.1.5` → Destination `192.168.10.100` — the **DoS block rule** (0/0 B, newly placed at top, not yet hit)
+  2. **Row 2 (Green ✓, Pass):** IPv4 ICMP/any — Source `192.168.1.5` → Destination `192.168.1.6` — allows Kali to ping pfSense WAN
+  3. **Row 3 (Green ✓, Pass):** IPv4 TCP — Source `192.168.1.0/24` → Destination `192.168.1.6` — allows WebGUI access from the home network
+- Warning banner: default password still set to `pfsense` — flagged by pfSense security check
+
+---
+
+## Step 5 — Kali Linux: Launching the SYN Flood
+
+![Kali hping3 Flood](screenshots/07-kali-hping3-flood.png)
+
+**What this shows:**
+- Kali terminal running the SYN flood command:
+  ```bash
+  sudo hping3 --flood -S -p 80 192.168.10.100
+  ```
+- Output confirms: `S set, 40 headers + 0 data bytes` — SYN flag is set, 40-byte TCP headers with no payload
+- `hping in flood mode, no replies will be shown` — packets sent at maximum rate, replies ignored
+- The attack targets `192.168.10.100` (Ubuntu) on port 80
+
+---
+
+## Step 6 — Wireshark: SYN Flood Captured on Ubuntu
+
+![Wireshark SYN Flood](screenshots/04-wireshark-syn-flood.png)
+
+**What this shows:**
+- Wireshark running on Ubuntu's `enp0s3` interface during the active flood
+- **18,281 packets** captured — enormous volume in a very short time window
+- Pattern visible: repeated TCP `[SYN]` packets from `192.168.1.5` → `192.168.10.100` on port 80
+- Ubuntu responding with `[RST, ACK]` (red rows) — the OS is trying to reject the connections but is overwhelmed
+- Packet details pane confirms: Source `192.168.1.5`, Destination `192.168.10.100`, Dst Port: 80, SYN flag set
+- This is a textbook **SYN flood DoS attack** — exhausting the victim's TCP connection table
+
+---
+
+## Step 7 — pfSense WAN Rules: Block Rule Active & Counting
+
+![Block Rule Applied](screenshots/06-pfsense-block-rule-applied.png)
+
+**What this shows:**
+- pfSense WAN rules after the `Block Kali DoS` rule was added to the **top** of the list
+- **Row 1 (Red ✗, Block):** States counter shows `0/29.89 MiB` — the block rule has matched and dropped **29.89 MiB** of flood traffic from `192.168.1.5`
+- **Row 4 (Green ✓, Pass):** The old allow rule (`0/1.02 MiB`) is still present below — but is never reached due to rule ordering
+- This confirms **first-match wins** behavior: the block rule intercepts Kali's packets before the allow rule is evaluated
+
+---
+
+## Step 8 — Wireshark: After Block Rule Applied
+
+![Wireshark After Block](screenshots/05-wireshark-after-block.png)
+
+**What this shows:**
+- Wireshark capture **after** the block rule was applied — only **14 packets** total
+- Traffic shown is normal Ubuntu background traffic (DNS query to `192.168.10.1`, connectivity check to `91.189.91.97`)
+- No SYN flood packets from `192.168.1.5` visible — the attack has been completely stopped at the firewall
+- The dramatic drop from **18,281 packets** (during flood) to **14 packets** (after block) visually confirms mitigation success
+
+---
+
+## Summary: Evidence Chain
+
+| # | Screenshot | Proves |
+|---|---|---|
+| 1 | pfSense Console | Network configured correctly — correct WAN/LAN IPs, pfctl disabled for setup |
+| 2 | pfSense Login | WebGUI reachable over WAN — firewall management accessible |
+| 3 | Ubuntu IP + Ping | Victim machine online, DHCP working, internet routing through pfSense confirmed |
+| 4 | WAN Rules (pre-attack) | Block rule created and placed at top of WAN ruleset |
+| 5 | Kali hping3 | Attack launched — SYN flood targeting Ubuntu:80 |
+| 6 | Wireshark Flood | 18,281 packets captured — attack impact visible on victim |
+| 7 | WAN Rules (post-block) | Block rule matching traffic — 29.89 MiB of malicious traffic dropped |
+| 8 | Wireshark Post-Block | Only 14 normal packets — flood completely mitigated |
