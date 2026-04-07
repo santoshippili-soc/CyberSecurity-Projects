@@ -247,14 +247,6 @@ Observe the **packet spike** in Wireshark on Ubuntu — thousands of packets per
 
 ---
 
-## 👤 Author
-
-**Santosh Ippili**  
-B.Tech CSE (Cybersecurity) — VIT-AP University, 2025  
-EC-Council Certified SOC Analyst (CSA) | AWS Certified Cloud Practitioner  
-
----
-
 ## 📜 License
 
 This project is for **educational purposes only**. Do not use these techniques on systems you do not own or have explicit permission to test.
